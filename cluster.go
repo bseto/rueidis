@@ -497,7 +497,7 @@ func (c *clusterClient) redirectOrNew(addr string, prev conn, slot uint16, mode 
 	cc := c.conns[addr]
 	c.mu.RUnlock()
 	if cc.conn != nil && prev != cc.conn {
-		if c.opt.ClusterOption.UpdateFromRedirectMove && mode == RedirectMove {
+		if c.opt.ClusterOption.AvoidRefreshOnRedirectMove && mode == RedirectMove {
 			c.mu.Lock()
 			c.wslots[slot] = cc.conn
 			c.mu.Unlock()
@@ -1402,7 +1402,7 @@ func (c *clusterClient) shouldRefreshRetry(err error, ctx context.Context) (addr
 			mode = RedirectRetry
 		}
 		// Call lazyRefresh for all redirects when flag is disabled, or for non-Move redirects when flag is enabled
-		if mode != RedirectNone && !(c.opt.ClusterOption.UpdateFromRedirectMove && mode == RedirectMove) {
+		if mode != RedirectNone && !(c.opt.ClusterOption.AvoidRefreshOnRedirectMove && mode == RedirectMove) {
 			c.lazyRefresh()
 		}
 	}
