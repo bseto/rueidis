@@ -15,13 +15,15 @@ import (
 )
 
 // ErrNoSlot indicates that there is no redis node owning the key slot.
-var ErrNoSlot = errors.New("the slot has no redis node")
-var ErrReplicaOnlyConflict = errors.New("ReplicaOnly conflicts with SendToReplicas option")
-var ErrInvalidShardsRefreshInterval = errors.New("ShardsRefreshInterval must be greater than or equal to 0")
-var ErrReplicaOnlyConflictWithReplicaSelector = errors.New("ReplicaOnly conflicts with ReplicaSelector option")
-var ErrReplicaOnlyConflictWithReadNodeSelector = errors.New("ReplicaOnly conflicts with ReadNodeSelector option")
-var ErrReplicaSelectorConflictWithReadNodeSelector = errors.New("either set ReplicaSelector or ReadNodeSelector, not both")
-var ErrSendToReplicasNotSet = errors.New("SendToReplicas must be set when ReplicaSelector is set")
+var (
+	ErrNoSlot                                      = errors.New("the slot has no redis node")
+	ErrReplicaOnlyConflict                         = errors.New("ReplicaOnly conflicts with SendToReplicas option")
+	ErrInvalidShardsRefreshInterval                = errors.New("ShardsRefreshInterval must be greater than or equal to 0")
+	ErrReplicaOnlyConflictWithReplicaSelector      = errors.New("ReplicaOnly conflicts with ReplicaSelector option")
+	ErrReplicaOnlyConflictWithReadNodeSelector     = errors.New("ReplicaOnly conflicts with ReadNodeSelector option")
+	ErrReplicaSelectorConflictWithReadNodeSelector = errors.New("either set ReplicaSelector or ReadNodeSelector, not both")
+	ErrSendToReplicasNotSet                        = errors.New("SendToReplicas must be set when ReplicaSelector is set")
+)
 
 type clusterClient struct {
 	wslots       [16384]conn
@@ -44,7 +46,7 @@ type clusterClient struct {
 type connrole struct {
 	conn   conn
 	hidden bool
-	//replica bool <- this field is removed because a server may have mixed roles at the same time in the future. https://github.com/valkey-io/valkey/issues/1372
+	// replica bool <- this field is removed because a server may have mixed roles at the same time in the future. https://github.com/valkey-io/valkey/issues/1372
 }
 
 var replicaOnlySelector = func(_ uint16, replicas []NodeInfo) int {
@@ -495,6 +497,11 @@ func (c *clusterClient) redirectOrNew(addr string, prev conn, slot uint16, mode 
 	cc := c.conns[addr]
 	c.mu.RUnlock()
 	if cc.conn != nil && prev != cc.conn {
+		if c.opt.ClusterOption.UpdateFromRedirectMove && mode == RedirectMove {
+			c.mu.Lock()
+			c.wslots[slot] = cc.conn
+			c.mu.Unlock()
+		}
 		return cc.conn
 	}
 	c.mu.Lock()
@@ -721,6 +728,7 @@ func (c *clusterClient) pickMulti(ctx context.Context, multi []Completed) (*conn
 func isMulti(cmd Completed) bool {
 	return len(cmd.Commands()) == 1 && cmd.Commands()[0] == "MULTI"
 }
+
 func isExec(cmd Completed) bool {
 	return len(cmd.Commands()) == 1 && cmd.Commands()[0] == "EXEC"
 }
@@ -1393,7 +1401,8 @@ func (c *clusterClient) shouldRefreshRetry(err error, ctx context.Context) (addr
 		} else if ctx.Err() == nil {
 			mode = RedirectRetry
 		}
-		if mode != RedirectNone {
+		// Call lazyRefresh for all redirects when flag is disabled, or for non-Move redirects when flag is enabled
+		if mode != RedirectNone && !(c.opt.ClusterOption.UpdateFromRedirectMove && mode == RedirectMove) {
 			c.lazyRefresh()
 		}
 	}
