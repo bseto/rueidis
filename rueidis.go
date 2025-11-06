@@ -301,6 +301,11 @@ type ClusterOption struct {
 	// If the value is zero, refreshment will be disabled.
 	// Cluster topology cache refresh happens always in the background after a successful scan.
 	ShardsRefreshInterval time.Duration
+
+	// AvoidRefreshOnRedirectMove when true, skips lazyRefresh for MOVED redirects and updates slot mappings immediately.
+	// When false (default), lazyRefresh is called for all redirects including MOVED, which updates all slot mappings globally.
+	// Setting this to true can improve performance during cluster migrations by avoiding full topology refreshes.
+	AvoidRefreshOnRedirectMove bool
 }
 
 // StandaloneOption is the options for the standalone client.
